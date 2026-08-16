@@ -810,7 +810,7 @@ def handle_callback(update):
             last = r[0] if r else "никогда"
             send_message(chat_id, f"⏳ <b>БОНУС УЖЕ ПОЛУЧЕН!</b>\n\nТы уже получил бонус сегодня ({last}).\nВозвращайся завтра!", thread_id=THREAD_ID)
             return
-        add_balance(user_id, 10)
+        update_balance(user_id, 10)
         set_bonus_claimed(user_id)
         send_message(chat_id, "🎁 <b>БОНУС ПОЛУЧЕН!</b>\n\nТебе начислено 10 очков!\nВозвращайся завтра за новым бонусом!", thread_id=THREAD_ID)
         return
