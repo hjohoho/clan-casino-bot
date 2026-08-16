@@ -321,8 +321,8 @@ def ladder_menu(step, current_multiplier, stones, bet, username):
 
 # ==================== МИНЕР ====================
 
-def is_mine_hidden(user_id, step, total_cells, bombs_count, is_all_in=False):
-    return random.random() < (bombs_count / total_cells)
+def is_mine_hidden(cell, bombs_positions):
+    return cell in bombs_positions
 
 MULTIPLIERS_3x3 = {
     3: {2: 1.2, 3: 1.4, 4: 1.7, 5: 2.0, 6: 2.3, 7: 2.7},
@@ -431,128 +431,92 @@ def end_game_menu(game, bet):
         [{"text": "🏠 В МЕНЮ", "callback_data": "menu"}]
     ]}
 
-# ==================== ЛОТЕРЕЯ ====================
+# ==================== ЛОТЕРЕЯ (ДВЕ ОТДЕЛЬНЫЕ) ====================
 
-lottery_data = {
-    "active": False,
-    "players": {},
-    "max_players": 10,
-    "lottery_id": 1
+lotteries = {
+    "5g": {"active": False, "players": {}, "max_players": 10, "ticket_price": 5},
+    "10g": {"active": False, "players": {}, "max_players": 10, "ticket_price": 10}
 }
 
 def lottery_menu():
     return {"inline_keyboard": [
-        [{"text": f"🎫 Билет 5г (лотерея #{lottery_data['lottery_id']})", "callback_data": "lottery_5g"}],
-        [{"text": f"🎫 Билет 10г (лотерея #{lottery_data['lottery_id']})", "callback_data": "lottery_10g"}],
-        [{"text": "👥 Участники", "callback_data": "lottery_players"}],
-        [{"text": "🏆 Розыгрыш (админ)", "callback_data": "lottery_draw"}],
-        [{"text": "⏹ Остановить (админ)", "callback_data": "lottery_stop"}],
+        [{"text": "🎫 Билет 5г (лотерея 5г)", "callback_data": "lottery_5g"}],
+        [{"text": "🎫 Билет 10г (лотерея 10г)", "callback_data": "lottery_10g"}],
+        [{"text": "👥 Участники 5г", "callback_data": "lottery_players_5g"}],
+        [{"text": "👥 Участники 10г", "callback_data": "lottery_players_10g"}],
+        [{"text": "🏆 Розыгрыш 5г (админ)", "callback_data": "lottery_draw_5g"}],
+        [{"text": "🏆 Розыгрыш 10г (админ)", "callback_data": "lottery_draw_10g"}],
+        [{"text": "⏹ Остановить 5г (админ)", "callback_data": "lottery_stop_5g"}],
+        [{"text": "⏹ Остановить 10г (админ)", "callback_data": "lottery_stop_10g"}],
         [{"text": "🔙 Назад", "callback_data": "menu"}]
     ]}
 
-def lottery_start(chat_id, user_id, ticket_price, lottery_id):
-    global lottery_data
+def lottery_start(chat_id, user_id, lottery_type):
+    global lotteries
+    lottery = lotteries[lottery_type]
     
-    if lottery_data["lottery_id"] != lottery_id:
-        send_message(chat_id, f"❌ Лотерея #{lottery_id} уже завершена! Сейчас активна лотерея #{lottery_data['lottery_id']}", thread_id=THREAD_ID)
+    if len(lottery["players"]) >= lottery["max_players"]:
+        send_message(chat_id, f"❌ Максимум {lottery['max_players']} игроков в лотерее {lottery_type}!", thread_id=THREAD_ID)
         return
     
-    if len(lottery_data["players"]) >= lottery_data["max_players"]:
-        send_message(chat_id, f"❌ Максимум {lottery_data['max_players']} игроков!", thread_id=THREAD_ID)
-        return
-    
+    ticket_price = lottery["ticket_price"]
     points_needed = ticket_price * GOLD_TO_POINTS
     balance = get_balance(user_id)
     if balance < points_needed:
         send_message(chat_id, f"❌ Недостаточно очков! Нужно: {points_needed}", thread_id=THREAD_ID)
         return
     
-    if user_id in lottery_data["players"]:
-        send_message(chat_id, f"❌ Ты уже купил билет в лотерею #{lottery_id}!", thread_id=THREAD_ID)
+    if user_id in lottery["players"]:
+        send_message(chat_id, f"❌ Ты уже купил билет в лотерею {lottery_type}!", thread_id=THREAD_ID)
         return
     
     update_balance(user_id, -points_needed)
     
     username = cursor.execute("SELECT username FROM users WHERE user_id = ?", (user_id,)).fetchone()[0]
-    lottery_data["players"][user_id] = {"username": username, "ticket": ticket_price}
+    lottery["players"][user_id] = {"username": username, "ticket": ticket_price}
+    lottery["active"] = True
     
-    if not lottery_data["active"]:
-        lottery_data["active"] = True
-    
-    send_message(chat_id, f"✅ {mention(user_id, username)} купил билет за {ticket_price} голды в лотерею #{lottery_id}!\n👥 Игроков: {len(lottery_data['players'])}/{lottery_data['max_players']}", thread_id=THREAD_ID)
+    send_message(chat_id, f"✅ {mention(user_id, username)} купил билет за {ticket_price} голды в лотерею {lottery_type}!\n👥 Игроков: {len(lottery['players'])}/{lottery['max_players']}", thread_id=THREAD_ID)
 
-def lottery_add_player(chat_id, admin_id, target_username, ticket_price):
-    global lottery_data
+def lottery_players(chat_id, lottery_type):
+    global lotteries
+    lottery = lotteries[lottery_type]
     
-    if admin_id not in ADMIN_IDS:
-        send_message(chat_id, "⛔ Только админ!", thread_id=THREAD_ID)
+    if not lottery["active"]:
+        send_message(chat_id, f"❌ Лотерея {lottery_type} не активна!", thread_id=THREAD_ID)
         return
     
-    if len(lottery_data["players"]) >= lottery_data["max_players"]:
-        send_message(chat_id, f"❌ Максимум {lottery_data['max_players']} игроков!", thread_id=THREAD_ID)
-        return
-    
-    cursor.execute("SELECT user_id, balance FROM users WHERE username LIKE ?", (f"%{target_username}%",))
-    r = cursor.fetchone()
-    if not r:
-        send_message(chat_id, f"❌ Игрок {target_username} не найден!", thread_id=THREAD_ID)
-        return
-    
-    user_id, balance = r
-    points_needed = ticket_price * GOLD_TO_POINTS
-    if balance < points_needed:
-        send_message(chat_id, f"❌ У игрока {target_username} недостаточно очков!", thread_id=THREAD_ID)
-        return
-    
-    if user_id in lottery_data["players"]:
-        send_message(chat_id, f"❌ {target_username} уже в лотерее!", thread_id=THREAD_ID)
-        return
-    
-    update_balance(user_id, -points_needed)
-    username = cursor.execute("SELECT username FROM users WHERE user_id = ?", (user_id,)).fetchone()[0]
-    lottery_data["players"][user_id] = {"username": username, "ticket": ticket_price}
-    
-    if not lottery_data["active"]:
-        lottery_data["active"] = True
-    
-    send_message(chat_id, f"✅ Админ добавил {mention(user_id, username)} в лотерею #{lottery_data['lottery_id']}!\n👥 Игроков: {len(lottery_data['players'])}/{lottery_data['max_players']}", thread_id=THREAD_ID)
-
-def lottery_players(chat_id):
-    global lottery_data
-    
-    if not lottery_data["active"]:
-        send_message(chat_id, "❌ Лотерея не активна!", thread_id=THREAD_ID)
-        return
-    
-    players = lottery_data["players"]
+    players = lottery["players"]
     if not players:
-        send_message(chat_id, "👥 Пока нет участников!", thread_id=THREAD_ID)
+        send_message(chat_id, f"👥 Пока нет участников в лотерее {lottery_type}!", thread_id=THREAD_ID)
         return
     
-    text = f"👥 <b>УЧАСТНИКИ ЛОТЕРЕИ #{lottery_data['lottery_id']}</b>\n\n"
+    text = f"👥 <b>УЧАСТНИКИ ЛОТЕРЕИ {lottery_type}</b>\n\n"
     for uid, data in players.items():
         text += f"• {data['username']} — {data['ticket']} голды\n"
-    text += f"\nВсего: {len(players)}/{lottery_data['max_players']} игроков"
+    text += f"\nВсего: {len(players)}/{lottery['max_players']} игроков"
     send_message(chat_id, text, thread_id=THREAD_ID)
 
-def lottery_draw(chat_id, admin_id):
-    global lottery_data
+def lottery_draw(chat_id, admin_id, lottery_type):
+    global lotteries
+    lottery = lotteries[lottery_type]
     
     if admin_id not in ADMIN_IDS:
         send_message(chat_id, "⛔ Только админ!", thread_id=THREAD_ID)
         return
     
-    if not lottery_data["active"]:
-        send_message(chat_id, "❌ Лотерея не активна!", thread_id=THREAD_ID)
+    if not lottery["active"]:
+        send_message(chat_id, f"❌ Лотерея {lottery_type} не активна!", thread_id=THREAD_ID)
         return
     
-    players = lottery_data["players"]
+    players = lottery["players"]
     if len(players) < 4:
         for uid, data in players.items():
             refund = data["ticket"] * GOLD_TO_POINTS
             update_balance(uid, refund)
         send_message(chat_id, f"❌ Недостаточно игроков ({len(players)}/4). Возврат очков.", thread_id=THREAD_ID)
-        lottery_data = {"active": False, "players": {}, "max_players": 10, "lottery_id": lottery_data["lottery_id"] + 1}
+        lottery["active"] = False
+        lottery["players"] = {}
         return
     
     winner_id = random.choice(list(players.keys()))
@@ -565,30 +529,34 @@ def lottery_draw(chat_id, admin_id):
     update_balance(winner_id, prize)
     
     players_list = "\n".join(f"• {p['username']} — {p['ticket']} голды" for p in players.values())
-    send_message(chat_id, f"🎉 <b>ЛОТЕРЕЯ #{lottery_data['lottery_id']} ЗАВЕРШЕНА!</b>\n\n👥 Участники:\n{players_list}\n\n🏆 <b>ПОБЕДИТЕЛЬ:</b> {mention(winner_id, winner_data['username'])}\n💰 Выигрыш: {prize} очков ({prize//GOLD_TO_POINTS} голды)\n💸 Комиссия казино: {commission} голды", thread_id=THREAD_ID)
+    send_message(chat_id, f"🎉 <b>ЛОТЕРЕЯ {lottery_type} ЗАВЕРШЕНА!</b>\n\n👥 Участники:\n{players_list}\n\n🏆 <b>ПОБЕДИТЕЛЬ:</b> {mention(winner_id, winner_data['username'])}\n💰 Выигрыш: {prize} очков ({prize//GOLD_TO_POINTS} голды)\n💸 Комиссия казино: {commission} голды", thread_id=THREAD_ID)
     
-    lottery_data = {"active": False, "players": {}, "max_players": 10, "lottery_id": lottery_data["lottery_id"] + 1}
+    lottery["active"] = False
+    lottery["players"] = {}
 
-def lottery_stop(chat_id, admin_id):
-    global lottery_data    
+def lottery_stop(chat_id, admin_id, lottery_type):
+    global lotteries
+    lottery = lotteries[lottery_type]
+    
     if admin_id not in ADMIN_IDS:
         send_message(chat_id, "⛔ Только админ!", thread_id=THREAD_ID)
         return
     
-    if not lottery_data["active"]:
-        send_message(chat_id, "❌ Лотерея не активна!", thread_id=THREAD_ID)
+    if not lottery["active"]:
+        send_message(chat_id, f"❌ Лотерея {lottery_type} не активна!", thread_id=THREAD_ID)
         return
     
-    players = lottery_data["players"]
+    players = lottery["players"]
     if players:
         for uid, data in players.items():
             refund = data["ticket"] * GOLD_TO_POINTS
             update_balance(uid, refund)
-        send_message(chat_id, f"⏹ <b>ЛОТЕРЕЯ #{lottery_data['lottery_id']} ОСТАНОВЛЕНА</b>\nВозврат очков всем участникам.", thread_id=THREAD_ID)
+        send_message(chat_id, f"⏹ <b>ЛОТЕРЕЯ {lottery_type} ОСТАНОВЛЕНА</b>\nВозврат очков всем участникам.", thread_id=THREAD_ID)
     else:
-        send_message(chat_id, f"⏹ Лотерея #{lottery_data['lottery_id']} остановлена. Участников не было.", thread_id=THREAD_ID)
+        send_message(chat_id, f"⏹ Лотерея {lottery_type} остановлена. Участников не было.", thread_id=THREAD_ID)
     
-    lottery_data = {"active": False, "players": {}, "max_players": 10, "lottery_id": lottery_data["lottery_id"] + 1}
+    lottery["active"] = False
+    lottery["players"] = {}
 
 # ==================== СОСТОЯНИЯ ====================
 
@@ -718,7 +686,8 @@ def handle_message(update):
             if ticket_price not in [5, 10]:
                 send_message(chat_id, "❌ Цена билета: 5 или 10 голды!", thread_id=THREAD_ID)
                 return
-            lottery_add_player(chat_id, user_id, target, ticket_price)
+            lottery_type = "5g" if ticket_price == 5 else "10g"
+            lottery_start(chat_id, user_id, lottery_type)
         except:
             send_message(chat_id, "❌ /addtolottery @username 5", thread_id=THREAD_ID)
         return
@@ -727,7 +696,18 @@ def handle_message(update):
         if user_id not in ADMIN_IDS:
             send_message(chat_id, "⛔ Только админ!", thread_id=THREAD_ID)
             return
-        lottery_stop(chat_id, user_id)
+        try:
+            parts = text.split()
+            if len(parts) != 2:
+                send_message(chat_id, "❌ /stoplottery 5g", thread_id=THREAD_ID)
+                return
+            lottery_type = parts[1]
+            if lottery_type not in ["5g", "10g"]:
+                send_message(chat_id, "❌ Доступно: 5g, 10g", thread_id=THREAD_ID)
+                return
+            lottery_stop(chat_id, user_id, lottery_type)
+        except:
+            send_message(chat_id, "❌ /stoplottery 5g", thread_id=THREAD_ID)
         return
 
     if withdraw_mode.get(user_id, False):
@@ -859,7 +839,7 @@ def handle_callback(update):
         return
 
     if data == "lottery_menu":
-        send_message(chat_id, f"🎫 <b>ЛОТЕРЕЯ #{lottery_data['lottery_id']}</b>\n\nВыберите действие:", lottery_menu(), thread_id=THREAD_ID)
+        send_message(chat_id, "🎫 <b>ЛОТЕРЕИ</b>\n\nВыберите действие:", lottery_menu(), thread_id=THREAD_ID)
         return
 
     if data == "menu":
@@ -1004,7 +984,16 @@ def handle_callback(update):
             send_message(chat_id, "❌ Уже открыто!", thread_id=THREAD_ID)
             return
         
-        if is_mine_hidden(user_id, state["steps"], state["max_cells"], state["bombs"], state.get("all_in", False)):
+        # ПРОВЕРКА ПО СОХРАНЁННЫМ КООРДИНАТАМ БОМБ!
+        if is_mine_hidden(cell, state["bombs_positions"]):
+            update_balance(user_id, -state["bet_points"])
+            update_user_stats(user_id, state["bet_points"], 0, False)
+            text_msg = f"💥 <b>БАХ! МИНА!</b>\n❌ ПРОИГРЫШ: {state['bet_points']} очков"
+            edit_message(chat_id, c["message"]["message_id"], text_msg, mines_field_menu(state["opened"], state["size"], state["max_cells"], state["bombs_positions"], True), thread_id=THREAD_ID)
+            send_message(chat_id, text_msg, game_choice_menu(), thread_id=THREAD_ID)
+            del mines_state[user_id]
+            return
+        else:
             state["opened"].append(cell)
             state["steps"] += 1
             
@@ -1015,14 +1004,6 @@ def handle_callback(update):
                 send_message(chat_id, f"✅ <b>Клетка {cell+1} пустая!</b>\nШаг 1 (×1.0)\n\nПродолжайте!", mines_field_menu(state["opened"], state["size"], state["max_cells"]), thread_id=THREAD_ID)
             else:
                 send_message(chat_id, f"✅ <b>Клетка {cell+1} пустая!</b>\nШаг {state['steps']}\nМножитель: ×{multiplier:.2f}\nПотенциальный выигрыш: {win_points} очков", mines_field_menu(state["opened"], state["size"], state["max_cells"]), thread_id=THREAD_ID)
-            return
-        else:
-            update_balance(user_id, -state["bet_points"])
-            update_user_stats(user_id, state["bet_points"], 0, False)
-            text_msg = f"💥 <b>БАХ! МИНА!</b>\n❌ ПРОИГРЫШ: {state['bet_points']} очков"
-            edit_message(chat_id, c["message"]["message_id"], text_msg, mines_field_menu(state["opened"], state["size"], state["max_cells"], state["bombs_positions"], True), thread_id=THREAD_ID)
-            send_message(chat_id, text_msg, game_choice_menu(), thread_id=THREAD_ID)
-            del mines_state[user_id]
             return
 
     if data == "mine_cashout":
@@ -1046,23 +1027,35 @@ def handle_callback(update):
     # ==================== ЛОТЕРЕЯ ====================
 
     if data == "lottery_5g":
-        lottery_start(chat_id, user_id, 5, lottery_data["lottery_id"])
+        lottery_start(chat_id, user_id, "5g")
         return
 
     if data == "lottery_10g":
-        lottery_start(chat_id, user_id, 10, lottery_data["lottery_id"])
+        lottery_start(chat_id, user_id, "10g")
         return
 
-    if data == "lottery_players":
-        lottery_players(chat_id)
+    if data == "lottery_players_5g":
+        lottery_players(chat_id, "5g")
         return
 
-    if data == "lottery_draw":
-        lottery_draw(chat_id, user_id)
+    if data == "lottery_players_10g":
+        lottery_players(chat_id, "10g")
         return
 
-    if data == "lottery_stop":
-        lottery_stop(chat_id, user_id)
+    if data == "lottery_draw_5g":
+        lottery_draw(chat_id, user_id, "5g")
+        return
+
+    if data == "lottery_draw_10g":
+        lottery_draw(chat_id, user_id, "10g")
+        return
+
+    if data == "lottery_stop_5g":
+        lottery_stop(chat_id, user_id, "5g")
+        return
+
+    if data == "lottery_stop_10g":
+        lottery_stop(chat_id, user_id, "10g")
         return
 
     # ==================== ПОВТОР ИГРЫ ====================
