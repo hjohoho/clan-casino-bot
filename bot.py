@@ -404,7 +404,7 @@ def game_choice_menu():
         [{"text": "🪜 Лесенка", "callback_data": "game_ladder"}],
         [{"text": "💣 Минер", "callback_data": "game_mines"}],
         [{"text": "🎰 Лотерея", "callback_data": "lottery_menu"}],
-        [{"text": "💰 Бонус (10 очков/день)", "callback_data": "bonus"}],
+        [{"text": "🎁 Бонус (10 очков/день)", "callback_data": "bonus"}],
         [{"text": "💰 Баланс", "callback_data": "balance"}],
         [{"text": "💳 Вывод", "callback_data": "withdraw"}]
     ]}
@@ -808,7 +808,7 @@ def handle_callback(update):
             cursor.execute("SELECT last_bonus FROM users WHERE user_id = ?", (user_id,))
             r = cursor.fetchone()
             last = r[0] if r else "никогда"
-            send_message(chat_id, f"⏳ <b>БОНУС УЖЕ ПОЛУЧЕН!</b>\n\nТы уже получил бонус сегодня ({last}).\nВозвращайся завтра!", thread_id=THREAD_ID)
+            send_message(chat_id, f"🎁 <b>БОНУС УЖЕ ПОЛУЧЕН!</b>\n\nТы уже получил бонус сегодня ({last}).\nВозвращайся завтра!", thread_id=THREAD_ID)
             return
         update_balance(user_id, 10)
         set_bonus_claimed(user_id)
