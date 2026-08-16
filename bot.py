@@ -372,8 +372,8 @@ def mines_field_menu(opened, size, max_cells, bombs_positions=None, game_over=Fa
             buttons.append("⬜")
     rows = [buttons[i:i+cols] for i in range(0, max_cells, cols)]
     keyboard = []
-    for row in rows:
-        keyboard.append([{"text": cell, "callback_data": f"mine_cell_{idx}"} for idx, cell in enumerate(row)])
+    for row_idx, row in enumerate(rows):
+        keyboard.append([{"text": cell, "callback_data": f"mine_cell_{row_idx * cols + col_idx}"} for col_idx, cell in enumerate(row)])
     if not game_over:
         keyboard.append([{"text": "💰 ЗАБРАТЬ", "callback_data": "mine_cashout"}])
     return {"inline_keyboard": keyboard}
@@ -388,8 +388,9 @@ def game_choice_menu():
         [{"text": "🪜 Лесенка", "callback_data": "game_ladder"}],
         [{"text": "💣 Минер", "callback_data": "game_mines"}],
         [{"text": "🎰 Лотерея", "callback_data": "lottery_menu"}],
-        [{"text": "💳 ВЫВОД (от 200 очков)", "callback_data": "withdraw"}],
-        [{"text": "🏦 РЕЗЕРВ КАЗИНО", "callback_data": "reserve"}]
+        [{"text": "💰 Баланс", "callback_data": "balance"}],
+        [{"text": "🏦 Резерв", "callback_data": "reserve"}],
+        [{"text": "💳 Вывод", "callback_data": "withdraw"}]
     ]}
 
 def cube_menu():
@@ -420,11 +421,12 @@ lottery_data = {
 
 def lottery_menu():
     return {"inline_keyboard": [
-        [{"text": "🎫 Купить билет 5 голды (50 очков)", "callback_data": "lottery_5g"}],
-        [{"text": "🎫 Купить билет 10 голды (100 очков)", "callback_data": "lottery_10g"}],
+        [{"text": "🎫 1 билет (5 голды)", "callback_data": "lottery_5g"}],
+        [{"text": "🎫 1 билет (10 голды)", "callback_data": "lottery_10g"}],
         [{"text": "👥 Участники", "callback_data": "lottery_players"}],
-        [{"text": "🏆 Провести розыгрыш (админ)", "callback_data": "lottery_draw"}],
-        [{"text": "⏹ ОСТАНОВИТЬ ЛОТЕРЕЮ (админ)", "callback_data": "lottery_stop"}]
+        [{"text": "🏆 Розыгрыш (админ)", "callback_data": "lottery_draw"}],
+        [{"text": "⏹ Остановить (админ)", "callback_data": "lottery_stop"}],
+        [{"text": "🔙 Назад", "callback_data": "menu"}]
     ]}
 
 def lottery_start(chat_id, user_id, ticket_price, game_type):
@@ -766,7 +768,7 @@ def handle_callback(update):
 
     if data == "balance":
         balance = get_balance(user_id)
-        send_message(chat_id, f"💰 {mention(user_id, c['from'].get('username', 'Unknown'))}, ваш баланс: {balance} очков", thread_id=THREAD_ID)
+        send_message(chat_id, f"💰 <b>ВАШ БАЛАНС</b>\n\n{balance} очков ({balance//GOLD_TO_POINTS} голды)", thread_id=THREAD_ID)
         return
 
     if data == "top":
@@ -827,6 +829,10 @@ def handle_callback(update):
 
     if data == "lottery_menu":
         send_message(chat_id, "🎰 <b>ЛОТЕРЕЯ</b>\n\nВыберите действие:", lottery_menu(), thread_id=THREAD_ID)
+        return
+
+    if data == "menu":
+        send_message(chat_id, "🏠 Возвращаемся в меню", game_choice_menu(), thread_id=THREAD_ID)
         return
 
     if data.startswith("roulette_"):
