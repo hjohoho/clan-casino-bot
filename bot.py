@@ -5,6 +5,7 @@ import sqlite3
 import time
 import math
 import hashlib
+from datetime import datetime, timedelta
 
 BOT_TOKEN = "8708846637:AAETwsr-2xu3g7fYlFfCPi8XfxbD3OhlSV0"
 ADMIN_IDS = [1462367346, 8785617232]
@@ -16,7 +17,7 @@ MIN_WITHDRAW_POINTS = 200
 
 conn = sqlite3.connect("clan_casino.db", check_same_thread=False)
 cursor = conn.cursor()
-cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, balance INTEGER DEFAULT 0)")
+cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, balance INTEGER DEFAULT 0, last_bonus TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS casino_reserve (id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0)")
 cursor.execute("CREATE TABLE IF NOT EXISTS user_stats (user_id INTEGER PRIMARY KEY, consecutive_wins INTEGER DEFAULT 0, total_bet INTEGER DEFAULT 0, total_win INTEGER DEFAULT 0)")
 cursor.execute("INSERT OR IGNORE INTO casino_reserve (id, balance) VALUES (1, 0)")
@@ -45,6 +46,21 @@ def gold_to_points(gold):
 
 def points_to_gold(points):
     return points // GOLD_TO_POINTS
+
+def can_claim_bonus(user_id):
+    cursor.execute("SELECT last_bonus FROM users WHERE user_id = ?", (user_id,))
+    r = cursor.fetchone()
+    if not r or not r[0]:
+        return True
+    try:
+        last = datetime.strptime(r[0], "%Y-%m-%d")
+        return (datetime.now() - last).days >= 1
+    except:
+        return True
+
+def set_bonus_claimed(user_id):
+    cursor.execute("UPDATE users SET last_bonus = ? WHERE user_id = ?", (datetime.now().strftime("%Y-%m-%d"), user_id))
+    conn.commit()
 
 def send_message(chat_id, text, keyboard=None, thread_id=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -388,8 +404,8 @@ def game_choice_menu():
         [{"text": "🪜 Лесенка", "callback_data": "game_ladder"}],
         [{"text": "💣 Минер", "callback_data": "game_mines"}],
         [{"text": "🎰 Лотерея", "callback_data": "lottery_menu"}],
+        [{"text": "💰 Бонус (10 очков/день)", "callback_data": "bonus"}],
         [{"text": "💰 Баланс", "callback_data": "balance"}],
-        [{"text": "🏦 Резерв", "callback_data": "reserve"}],
         [{"text": "💳 Вывод", "callback_data": "withdraw"}]
     ]}
 
@@ -782,14 +798,21 @@ def handle_callback(update):
         send_message(chat_id, msg, thread_id=THREAD_ID)
         return
 
-    if data == "reserve":
-        reserve = get_reserve()
-        send_message(chat_id, f"🏦 <b>РЕЗЕРВ КАЗИНО</b>\n{reserve} очков", thread_id=THREAD_ID)
-        return
-
     if data == "withdraw":
         withdraw_mode[user_id] = True
         send_message(chat_id, f"💳 <b>ВЫВОД ОЧКОВ</b>\nВведите сумму (мин. {MIN_WITHDRAW_POINTS} очков):", thread_id=THREAD_ID)
+        return
+
+    if data == "bonus":
+        if not can_claim_bonus(user_id):
+            cursor.execute("SELECT last_bonus FROM users WHERE user_id = ?", (user_id,))
+            r = cursor.fetchone()
+            last = r[0] if r else "никогда"
+            send_message(chat_id, f"⏳ <b>БОНУС УЖЕ ПОЛУЧЕН!</b>\n\nТы уже получил бонус сегодня ({last}).\nВозвращайся завтра!", thread_id=THREAD_ID)
+            return
+        add_balance(user_id, 10)
+        set_bonus_claimed(user_id)
+        send_message(chat_id, "🎁 <b>БОНУС ПОЛУЧЕН!</b>\n\nТебе начислено 10 очков!\nВозвращайся завтра за новым бонусом!", thread_id=THREAD_ID)
         return
 
     if data == "game_slots":
