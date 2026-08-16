@@ -20,6 +20,7 @@ cursor = conn.cursor()
 cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, balance INTEGER DEFAULT 0, last_bonus TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS casino_reserve (id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0)")
 cursor.execute("CREATE TABLE IF NOT EXISTS user_stats (user_id INTEGER PRIMARY KEY, consecutive_wins INTEGER DEFAULT 0, total_bet INTEGER DEFAULT 0, total_win INTEGER DEFAULT 0)")
+cursor.execute("CREATE TABLE IF NOT EXISTS admins (user_id INTEGER PRIMARY KEY, username TEXT)")
 cursor.execute("INSERT OR IGNORE INTO casino_reserve (id, balance) VALUES (1, 0)")
 conn.commit()
 
@@ -431,7 +432,7 @@ def end_game_menu(game, bet):
         [{"text": "🏠 В МЕНЮ", "callback_data": "menu"}]
     ]}
 
-# ==================== ЛОТЕРЕЯ (ДВЕ ОТДЕЛЬНЫЕ) ====================
+# ==================== ЛОТЕРЕЯ ====================
 
 lotteries = {
     "5g": {"active": False, "players": {}, "max_players": 10, "ticket_price": 5},
@@ -661,15 +662,17 @@ def handle_message(update):
             return
         try:
             p = text.split()
-            if len(p) != 2:
+            if len(p) < 2:
                 send_message(chat_id, "❌ /resetbalance @username", thread_id=THREAD_ID)
                 return
             target = p[1].replace("@", "")
-            cursor.execute("UPDATE users SET balance = 0 WHERE username LIKE ?", (f"%{target}%"))
+            cursor.execute("UPDATE users SET balance = 0 WHERE username LIKE ?", (f"%{target}%",))
+            if cursor.rowcount == 0:
+                cursor.execute("UPDATE users SET balance = 0 WHERE user_id = ?", (int(target),))
             conn.commit()
             send_message(chat_id, f"✅ Баланс {target} сброшен до 0", thread_id=THREAD_ID)
-        except:
-            send_message(chat_id, "❌ /resetbalance @username", thread_id=THREAD_ID)
+        except Exception as e:
+            send_message(chat_id, f"❌ Ошибка: {e}\nИспользуй: /resetbalance @username", thread_id=THREAD_ID)
         return
 
     if text.startswith("/addtolottery"):
@@ -984,7 +987,6 @@ def handle_callback(update):
             send_message(chat_id, "❌ Уже открыто!", thread_id=THREAD_ID)
             return
         
-        # ПРОВЕРКА ПО СОХРАНЁННЫМ КООРДИНАТАМ БОМБ!
         if is_mine_hidden(cell, state["bombs_positions"]):
             update_balance(user_id, -state["bet_points"])
             update_user_stats(user_id, state["bet_points"], 0, False)
