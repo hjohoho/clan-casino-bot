@@ -319,7 +319,7 @@ def ladder_menu(step, current_multiplier, stones, bet, username):
     ]}
     return text, keyboard
 
-# ==================== МИНЕР ====================
+# ==================== МИНЕР (ИСПРАВЛЕН) ====================
 
 def is_mine_hidden(user_id, step, total_cells, bombs_count, is_all_in=False):
     return random.random() < (bombs_count / total_cells)
@@ -378,18 +378,22 @@ def mines_field_menu(opened, size, max_cells, bombs_positions=None, game_over=Fa
     if max_cells is None or max_cells == 0:
         max_cells = 9
     cols = 3 if max_cells == 9 else 5
-    buttons = []
-    for i in range(max_cells):
-        if game_over and i in bombs_positions:
-            buttons.append("💣")
-        elif i in opened:
-            buttons.append("✅")
-        else:
-            buttons.append("⬜")
-    rows = [buttons[i:i+cols] for i in range(0, max_cells, cols)]
     keyboard = []
-    for row_idx, row in enumerate(rows):
-        keyboard.append([{"text": cell, "callback_data": f"mine_cell_{row_idx * cols + col_idx}"} for col_idx, cell in enumerate(row)])
+    cell_index = 0
+    for row in range(cols):
+        row_buttons = []
+        for col in range(cols):
+            if cell_index >= max_cells:
+                break
+            if game_over and cell_index in bombs_positions:
+                row_buttons.append({"text": "💣", "callback_data": f"mine_cell_{cell_index}"})
+            elif cell_index in opened:
+                row_buttons.append({"text": "✅", "callback_data": f"mine_cell_{cell_index}"})
+            else:
+                row_buttons.append({"text": "⬜", "callback_data": f"mine_cell_{cell_index}"})
+            cell_index += 1
+        if row_buttons:
+            keyboard.append(row_buttons)
     if not game_over:
         keyboard.append([{"text": "💰 ЗАБРАТЬ", "callback_data": "mine_cashout"}])
     return {"inline_keyboard": keyboard}
@@ -403,7 +407,7 @@ def game_choice_menu():
         [{"text": "🎰 Рулетка", "callback_data": "game_roulette"}],
         [{"text": "🪜 Лесенка", "callback_data": "game_ladder"}],
         [{"text": "💣 Минер", "callback_data": "game_mines"}],
-        [{"text": "🎰 Лотерея", "callback_data": "lottery_menu"}],
+        [{"text": "🎫 Лотерея", "callback_data": "lottery_menu"}],
         [{"text": "🎁 Бонус (10 очков/день)", "callback_data": "bonus"}],
         [{"text": "💰 Баланс", "callback_data": "balance"}],
         [{"text": "💳 Вывод", "callback_data": "withdraw"}]
@@ -851,7 +855,7 @@ def handle_callback(update):
         return
 
     if data == "lottery_menu":
-        send_message(chat_id, "🎰 <b>ЛОТЕРЕЯ</b>\n\nВыберите действие:", lottery_menu(), thread_id=THREAD_ID)
+        send_message(chat_id, "🎫 <b>ЛОТЕРЕЯ</b>\n\nВыберите действие:", lottery_menu(), thread_id=THREAD_ID)
         return
 
     if data == "menu":
